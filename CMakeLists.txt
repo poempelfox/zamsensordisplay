@@ -19,6 +19,7 @@ include_directories(./src)
 # generate an executable file
 add_executable(zamsensdisp 
 src/main.c
+src/network.c
 )
 
 # enable usb output, disable uart output
@@ -28,5 +29,5 @@ pico_enable_stdio_uart(zamsensdisp 0)
 # create map/bin/hex/uf2 file etc.
 pico_add_extra_outputs(zamsensdisp)
 
-target_link_libraries(zamsensdisp ePaper GUI Fonts Config pico_stdlib hardware_spi pico_cyw43_arch_lwip_threadsafe_background)
+target_link_libraries(zamsensdisp ePaper GUI Fonts Config pico_stdlib hardware_spi pico_cyw43_arch_lwip_threadsafe_background hardware_rtc)
 

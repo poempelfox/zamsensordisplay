@@ -3,15 +3,73 @@
 #include "EPD_4in2b_V2.h"
 #include "Debug.h"
 #include <stdlib.h> // malloc() free()
+#include <pico/cyw43_arch.h>
+#include <lwip/pbuf.h>
+#include <lwip/tcp.h>
+#include <lwip/dns.h>
+#include <lwip/timeouts.h>
+#include <hardware/rtc.h>
+#include "secrets.h"
+#include "network.h"
 
 /* define alias so we don't have to use the extremely long
  * and unintuitive names */
 #define DISPSIZEX EPD_4IN2B_V2_WIDTH
 #define DISPSIZEY EPD_4IN2B_V2_HEIGHT
 
+
 int main(void)
 {
-    //stdio_init_all(); // DEV_Module_Init does that.
+    stdio_init_all(); // DEV_Module_Init does that, so we normally don't.
+    /* Prepare RTC for use later */
+    rtc_init();
+
+    sleep_ms(1000);
+
+    printf("Initializing WiFi...\n");
+    /* WiFi test */
+#ifndef WIFI_COUNTRY
+    if (cyw43_arch_init()) {
+#else
+    if (cyw43_arch_init_with_country(WIFI_COUNTRY)) {
+#endif
+      printf("Initializing WiFi failed! That's sad!\r\n");
+      return 1;
+    }
+    cyw43_arch_enable_sta_mode();
+    uint8_t mymac[6];
+    cyw43_wifi_get_mac(&cyw43_state, CYW43_ITF_STA, &mymac[0]);
+    printf("My WiFi MAC-address is: ");
+    for (int i = 0; i < 6; i++) {
+      printf("%02x%s", mymac[i], (i == 5) ? "\n" : ":");
+    }
+    while (1) {
+      printf("Connecting to WiFi...\r\n");
+      int wifierr = cyw43_arch_wifi_connect_timeout_ms(WIFI_SSID, WIFI_PASSWORD, CYW43_AUTH_WPA2_AES_PSK, 30000);
+      //int wifierr = cyw43_arch_wifi_connect_blocking(WIFI_SSID, WIFI_PASSWORD, CYW43_AUTH_WPA2_AES_PSK);
+      if (wifierr != 0) {
+        printf("failed to connect, Error code: %d.\r\n", wifierr);
+      } else {
+        printf("Connected.\n");
+      }
+      dns_init();
+      settimefromntp("ntp3.fau.de");
+      fetchtemphum("fox.poempelfox.de", 7777);
+      fetchtemphum("fox.poempelfox.de", 7778);
+
+      sleep_ms(20000);
+
+      printf("Disconnecting from WiFi...\r\n");
+      cyw43_wifi_leave(&cyw43_state, CYW43_ITF_STA);
+
+      sleep_ms(20000);
+    }
+    /* Once you called this, you can never cyw43_arch_init again, it
+     * will just hang. Not that it's documented that way of course,
+     * but it's a buggy POS. */
+    cyw43_arch_deinit();
+
+#if 0 /* No epaper for now.
     DEV_Delay_ms(500); 
 
     if (DEV_Module_Init() != 0) {
@@ -50,40 +108,19 @@ int main(void)
     Paint_SelectImage(RedImage);
     Paint_Clear(WHITE);
 
-    //1.Draw black image
-    printf("Draw black image\r\n");
+    printf("Draw image\r\n");
     Paint_SelectImage(BlackImage);
     Paint_Clear(WHITE);
     Paint_DrawRectangle(0, 0, DISPSIZEX-1, 28, BLACK, DOT_PIXEL_1X1, DRAW_FILL_FULL);
-    Paint_DrawString_EN(100, 2, "Sensoren im ZAM", &Font24, BLACK, WHITE);
+    // Font24->Width is 17, -> Height is 24 (obviously).
+    Paint_DrawString_EN(77, 3, "Sensoren im ZAM", &Font24, BLACK, WHITE);
+    // Font16->Width is 11, -> Height is 16.
     Paint_DrawString_EN(10, 35, "Tisch Suedhaus", &Font16, WHITE, BLACK);
     Paint_DrawString_EN(240, 35, "14.55C", &Font16, WHITE, BLACK);
     Paint_DrawString_EN(340, 35, "35.4%", &Font16, WHITE, BLACK);
     Paint_DrawString_EN(10, 55, "Haupt-Toilette SH", &Font16, WHITE, BLACK);
     Paint_DrawString_EN(240, 55, " 1.98C", &Font16, WHITE, BLACK);
     Paint_DrawString_EN(340, 55, "67.2%", &Font16, WHITE, BLACK);
-#if 0
-    Paint_DrawPoint(10, 80, BLACK, DOT_PIXEL_1X1, DOT_STYLE_DFT);
-    Paint_DrawPoint(10, 90, BLACK, DOT_PIXEL_2X2, DOT_STYLE_DFT);
-    Paint_DrawPoint(10, 100, BLACK, DOT_PIXEL_3X3, DOT_STYLE_DFT);
-    Paint_DrawPoint(10, 110, BLACK, DOT_PIXEL_3X3, DOT_STYLE_DFT);
-    Paint_DrawLine(20, 70, 70, 120, BLACK, DOT_PIXEL_1X1, LINE_STYLE_SOLID);
-    Paint_DrawLine(70, 70, 20, 120, BLACK, DOT_PIXEL_1X1, LINE_STYLE_SOLID);      
-    Paint_DrawRectangle(20, 70, 70, 120, BLACK, DOT_PIXEL_1X1, DRAW_FILL_EMPTY);
-    Paint_DrawRectangle(80, 70, 130, 120, BLACK, DOT_PIXEL_1X1, DRAW_FILL_FULL);
-    Paint_DrawString_EN(10, 0, "waveshare", &Font16, BLACK, WHITE);    
-    Paint_DrawNum(10, 50, 987654321, &Font16, WHITE, BLACK);
-    //2.Draw red image
-    printf("Draw red image\r\n");
-    Paint_SelectImage(RedImage);
-    Paint_Clear(WHITE);
-    Paint_DrawCircle(160, 95, 20, BLACK, DOT_PIXEL_1X1, DRAW_FILL_EMPTY);
-    Paint_DrawCircle(210, 95, 20, BLACK, DOT_PIXEL_1X1, DRAW_FILL_FULL);
-    Paint_DrawLine(85, 95, 125, 95, BLACK, DOT_PIXEL_1X1, LINE_STYLE_DOTTED);
-    Paint_DrawLine(105, 75, 105, 115, BLACK, DOT_PIXEL_1X1, LINE_STYLE_DOTTED);  
-    Paint_DrawString_EN(10, 20, "hello world", &Font12, WHITE, BLACK);
-    Paint_DrawNum(10, 33, 123456789, &Font12, BLACK, WHITE);
-#endif
 
     printf("EPD_Display\r\n");
     EPD_4IN2B_V2_Display(BlackImage, RedImage);
@@ -117,6 +154,7 @@ int main(void)
     // close 5V
     printf("close 5V, Module enters 0 power consumption ...\r\n");
     DEV_Module_Exit();
+#endif
     
     return 0;
 }
