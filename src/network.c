@@ -225,7 +225,8 @@ void ntpudprcb(void * arg, struct udp_pcb * pcb, struct pbuf * p, const ip_addr_
   if ((port == 123) && (p->tot_len >= 48)
    && (mode == 4) && (stratum > 0) && (stratum < 5)) { /* That looks like it's for us. */
     uint8_t seconds_buf[4] = { 0, 0, 0, 0 };
-    /* The transmit timestamp is at offset 40 */
+    /* The transmit timestamp is at offset 40. We need only the
+     * main timestamp, not the fraction that would be at 44. */
     pbuf_copy_partial(p, seconds_buf, sizeof(seconds_buf), 40);
     /* of course, the following line will cause massive problems in the year 2036,
      * which makes the year 2038 problem a few lines down not much of a problem. */
@@ -308,6 +309,9 @@ int settimefromntp(uint8_t * host)
   cyw43_arch_lwip_end();
   if (udpe != ERR_OK) {
     printf("UDP connect failed.\r\n");
+    cyw43_arch_lwip_begin();
+    udp_remove(conn);
+    cyw43_arch_lwip_end();
     return 3;
   }
   /* Allocate buffer for the NTP request */
@@ -326,6 +330,9 @@ int settimefromntp(uint8_t * host)
   pbuf_free(ntpreq);
   if (udpe != ERR_OK) {
     printf("UDP send failed.\r\n");
+    cyw43_arch_lwip_begin();
+    udp_remove(conn);
+    cyw43_arch_lwip_end();
     return 4;
   }
   absolute_time_t ntptot = make_timeout_time_ms(2000);
@@ -333,8 +340,12 @@ int settimefromntp(uint8_t * host)
     sys_check_timeouts();
     if (get_absolute_time() > ntptot) { break; }
   }
+  cyw43_arch_lwip_begin();
+  udp_remove(conn);
+  cyw43_arch_lwip_end();
   if (ntpreceived <= 0) { /* no valid time received. */
     printf("No (valid) time received, timeout\r\n");
     return 5;
   }
+  return 0;
 }
