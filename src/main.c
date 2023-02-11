@@ -136,13 +136,14 @@ int main(void)
       Paint_SelectImage(RedImage);
       Paint_Clear(WHITE);
       Paint_DrawRectangle(0, 0, DISPSIZEX-1, 28, BLACK, DOT_PIXEL_1X1, DRAW_FILL_FULL);
-      // Font24->Width is 17, -> Height is 24 (obviously).
-      // Font16->Width is 11, -> Height is 16.
+      // Font24.Width is 17, .Height is 24 (obviously).
+      // Font16.Width is 11, .Height is 16.
+      // TerminusFont16.Width is 8, .Height is 16.
       Paint_DrawString_EN(77, 3, "Sensoren im ZAM", &Font24, BLACK, WHITE);
       Paint_SelectImage(BlackImage);
       datetime_t cdt;
       rtc_get_datetime(&cdt);
-      char spfbuf[32];
+      uint8_t spfbuf[32];
       if (cdt.year >= 2000) {
         sprintf(spfbuf, "%04d-%02d-%02d %02d:%02d:%02d",
                         cdt.year, cdt.month, cdt.day,
@@ -152,21 +153,21 @@ int main(void)
                 to_ms_since_boot(get_absolute_time()) / 60000);
       }
       printf("E-Paper time shown: %s\r\n", spfbuf);
-      Paint_DrawString_EN((400 - (strlen(spfbuf) * 11)) / 2,
-                           300-17, spfbuf, &Font16, WHITE, BLACK);
+      Paint_DrawString_EN((DISPSIZEX - (strlen(spfbuf) * Font16.Width)) / 2,
+                           DISPSIZEY-17, spfbuf, &Font16, WHITE, BLACK);
       /* Now query and print sensors */
       int i = 0;
       while (stq[i].name != NULL) {
         sensdata sd = fetchtemphum(stq[i].host, stq[i].port);
-        Paint_DrawString_EN(10, 35 + i*20, stq[i].name, &Font16, WHITE, BLACK);
+        Paint_DrawString_EN(10, 35 + i*20, stq[i].name, &FontTerminus16, WHITE, BLACK);
         if (sd.isvalid) {
-          sprintf(spfbuf, "%5.2f~C", sd.temp);
-          Paint_DrawString_EN(220, 35 + i*20, spfbuf, &Font16, WHITE, BLACK);
+          sprintf(spfbuf, "%5.2f" "\x7f" "C", sd.temp);
+          Paint_DrawString_EN(220, 35 + i*20, spfbuf, &FontTerminus16, WHITE, BLACK);
           sprintf(spfbuf, "%5.1f%%", sd.hum);
-          Paint_DrawString_EN(320, 35 + i*20, spfbuf, &Font16, WHITE, BLACK);
+          Paint_DrawString_EN(320, 35 + i*20, spfbuf, &FontTerminus16, WHITE, BLACK);
         } else {
           Paint_SelectImage(RedImage);
-          Paint_DrawString_EN(220, 35 + i*20, "NO DATA", &Font16, WHITE, RED);
+          Paint_DrawString_EN(220, 35 + i*20, "NO DATA", &FontTerminus16, WHITE, RED);
           Paint_SelectImage(BlackImage);
         }
         i++;
