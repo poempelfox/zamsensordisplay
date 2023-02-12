@@ -29,5 +29,5 @@ pico_enable_stdio_uart(zamsensdisp 0)
 # create map/bin/hex/uf2 file etc.
 pico_add_extra_outputs(zamsensdisp)
 
-target_link_libraries(zamsensdisp ePaper GUI Fonts Config pico_stdlib hardware_spi pico_cyw43_arch_lwip_threadsafe_background hardware_rtc)
+target_link_libraries(zamsensdisp ePaper GUI Fonts Config pico_stdlib hardware_spi pico_cyw43_arch_lwip_threadsafe_background hardware_adc hardware_gpio hardware_rtc)
 
