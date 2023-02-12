@@ -1,15 +1,15 @@
-#include <stdlib.h> // malloc() free() strtod()
-#include <string.h> // strtok
-#include <pico/cyw43_arch.h>
+#include <hardware/rtc.h>
+#include <lwip/dns.h>
 #include <lwip/pbuf.h>
 #include <lwip/tcp.h>
-#include <lwip/dns.h>
 #include <lwip/timeouts.h>
+#include <pico/cyw43_arch.h>
+#include <stdlib.h>
+#include <string.h>
 #include <time.h>
-#include <hardware/rtc.h>
 #include "network.h"
 
-#define RCVBUFSIZE 1024
+#define RCVBUFSIZE 2048
 
 /* adjustment for timezone (in seconds).
  * Germany = UTC + 1 hour */
@@ -185,6 +185,120 @@ sensdata fetchtemphum(uint8_t * host, uint16_t port)
   res.isvalid = 1;
   printf("Successfully parsed: temp = %.2lf, humidity = %.1lf\r\n", res.temp, res.hum);
   return res;
+}
+
+int fetchvaluefromwpd(uint32_t sensorid, double * res)
+{
+  char * host = "wetter.poempelfox.de";
+  uint16_t port = 80;
+  havednsreply = 0;
+  cyw43_arch_lwip_begin();
+  err_t dnsres = dns_gethostbyname(host, &dnsrip, dnsfcb, NULL);
+  cyw43_arch_lwip_end();
+  if (dnsres == ERR_OK) {
+    printf("OK, immediately resolved %s to IP %s\n", host, printip(dnsrip));
+  }
+  if (dnsres == ERR_INPROGRESS) {
+    printf("OK, DNS request has been queued, waiting for a reply.\r\n");
+    while (havednsreply == 0) {
+      sys_check_timeouts();
+    }
+    if (havednsreply > 0) {
+      printf("Received a reply! Resolved %s to IP %s\r\n", host, printip(dnsrip));
+    } else {
+      printf("Could not resolve hostname %s.\r\n", host);
+      return 1;
+    }
+  }
+  tcpconnected = 0;
+  struct tcp_pcb * conn = tcp_new();
+  tcp_err(conn, tcpecbf);
+  rcvbufpos = 0;
+  tcp_recv(conn, tcprcbf);
+  cyw43_arch_lwip_begin();
+  err_t conres = tcp_connect(conn, &dnsrip, port, tcpccbf);
+  cyw43_arch_lwip_end();
+  if (conres != ERR_OK) {
+    printf("Could not queue outgoing TCP connection.\r\n");
+    cyw43_arch_lwip_begin();
+    tcp_abort(conn);
+    cyw43_arch_lwip_end();
+    return 1;
+  }
+  while (tcpconnected == 0) {
+    sys_check_timeouts();
+  }
+  if (tcpconnected < 0) {
+    printf("Could not establish TCP connection to %s on port %u.\r\n", host, port);
+    cyw43_arch_lwip_begin();
+    if (tcp_close(conn) != ERR_OK) {
+      tcp_abort(conn);
+    }
+    cyw43_arch_lwip_end();
+    return 1;
+  }
+  /* Send HTTP request now */
+  char httpreq[500];
+  sprintf(httpreq, "GET /api/getlastvalue/%u HTTP/1.1\r\n", sensorid);
+  sprintf(&httpreq[strlen(httpreq)], "Host: %s\r\n", host);
+  strcat(httpreq, "Connection: close\r\n\r\n");
+  // We'll just ignore an error on the write - we'll find out soon
+  // enough that we get no reply.
+  (void)tcp_write(conn, httpreq, strlen(httpreq), 0);
+  (void)tcp_output(conn);
+  /* Now wait for reply to be sent and connection to be closed. */
+  while (tcpconnected >= 0) {
+    sys_check_timeouts();
+  }
+  cyw43_arch_lwip_begin();
+  if (tcp_close(conn) != ERR_OK) {
+    printf("Warning: Could not cleanly end TCP connection - calling tcp_abort.\n");
+    tcp_abort(conn);
+  }
+  cyw43_arch_lwip_end();
+  rcvbuf[rcvbufpos] = 0;
+  printf("Received %d bytes total.\r\n", rcvbufpos);
+  printf("Content: %s\r\n", rcvbuf);
+  /* Now "parse" this. This is going to be "fun". */
+  delchar(rcvbuf, '\r');
+  rcvbufpos = 0;
+  int inheader = 1;
+  char thevalue[20];
+  strcpy(thevalue, "");
+  while (rcvbuf[rcvbufpos] != 0) {
+    if (inheader) {
+      if ((rcvbuf[rcvbufpos] == '\n') && (rcvbuf[rcvbufpos+1] == '\n')) {
+        /* We've found the end of the headers! */
+        rcvbufpos++; // advance one more than usual */
+        inheader = 0;
+      }
+    } else { /* Not in the headers anymore. */
+      if (strncmp(&rcvbuf[rcvbufpos], "\"v\":", 4) == 0) {
+        /* OK, so this is where the value we're searching for is located. */
+        int piv = 0;
+        char * pp = &rcvbuf[rcvbufpos+4];
+        while ((piv < 15)
+            && ((*pp == '.')
+             || (*pp == '-')
+             || ((*pp >= '0') && (*pp <= '9')))) {
+          thevalue[piv] = *pp;
+          piv++;
+          pp++;
+        }
+        thevalue[piv] = 0;
+        break; /* We're done, no need to parse until the end. */
+      }
+    }
+    rcvbufpos++;
+  }
+  char * afterendptr;
+  *res = strtod(thevalue, &afterendptr);
+  printf("Extracted value: '%s' - double %.2lf invalid %d\r\n",
+         thevalue, *res, (afterendptr == &thevalue[0]));
+  if (afterendptr == &thevalue[0]) { /* Conversion was not valid */
+    return 1;
+  }
+  return 0;
 }
 
 /* Returns 1 if we are in DST according to EU rules,

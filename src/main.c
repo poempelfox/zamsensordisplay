@@ -1,16 +1,17 @@
+#include <hardware/adc.h>
+#include <hardware/rtc.h>
+//#include <hardware/watchdog.h>
+#include <lwip/dns.h>
+#include <lwip/pbuf.h>
+#include <lwip/tcp.h>
+#include <lwip/timeouts.h>
+#include <pico/cyw43_arch.h>
+#include <stdlib.h>
+#include <time.h>
 #include "DEV_Config.h"
 #include "GUI_Paint.h"
 #include "EPD_4in2b_V2.h"
 #include "Debug.h"
-#include <stdlib.h> // malloc() free()
-#include <pico/cyw43_arch.h>
-#include <lwip/pbuf.h>
-#include <lwip/tcp.h>
-#include <lwip/dns.h>
-#include <lwip/timeouts.h>
-#include <hardware/rtc.h>
-#include <hardware/adc.h>
-#include <time.h>
 #include "secrets.h"
 #include "network.h"
 
@@ -28,20 +29,26 @@ volatile int pleaseexit = 0;
 #define DISPSIZEY EPD_4IN2B_V2_HEIGHT
 
 struct remsens { // Remote Sensors
-  char * name;
-  char * host;
-  uint16_t port;
+  char * name;  // NULL for end of list.
+  char * host;  // NULL for sensors queried through wetter.poempelfox.de
+  uint16_t port; // Port on host. unused if host is NULL.
+  uint32_t sensidt; // SensorID Tempsensor for w.p.d 
+  uint32_t sensidh; // SensorID Humiditysensor for w.p.d
 };
 
 struct remsens stq[] = {
-  { .name = "Konferenztisch", .host = "fox.poempelfox.de", 7777 },
-  { .name = "EG Mitte", .host = "tempzamsh.im.zam.haus", 7337 },
-  { .name = "1. OG", .host = "tempzamsh.im.zam.haus", 7340 },
-  { .name = "Toilette", .host = "tempzamsh.im.zam.haus", 7343 },
-  { .name = "Aquarium-NH", .host = "tempzamnh.im.zam.haus", 7342 },
-  { .name = "Serverraum", .host = "tempzamnh.im.zam.haus", 7344 },
-  { .name = "Test2", .host = "fox.poempelfox.de", 7778 },
-  { .name = NULL, .host = NULL, 0 }
+  { .name = "Konferenztisch", .host = NULL, .sensidt = 43, .sensidh = 44 },
+  { .name = "EG Mitte", .host = "tempzamsh.im.zam.haus", .port = 7337 },
+  { .name = "Toilette", .host = "tempzamsh.im.zam.haus", .port = 7343 },
+  { .name = "1. OG Mitte", .host = "tempzamsh.im.zam.haus", .port = 7340 },
+  { .name = "1. OG Sued", .host = "tempzamsh.im.zam.haus", .port = 7341 },
+  { .name = "Seminarraum", .host = NULL, .sensidt = 49, .sensidh = 50 },
+  { .name = "Bad 2. OG", .host = "tempzamsh.im.zam.haus", .port = 7338 },
+  { .name = "Whng.alt 2. OG", .host = "tempzamsh.im.zam.haus", .port = 7339 },
+  { .name = "Partykeller", .host = NULL, .sensidt = 63, .sensidh = 64 },
+  { .name = "Aquarium-NH", .host = "tempzamnh.im.zam.haus", .port = 7342 },
+  { .name = "Serverraum", .host = "tempzamnh.im.zam.haus", .port = 7344 },
+  { .name = NULL, .host = NULL }
 };
 
 void keyirqcb(unsigned int gpio, uint32_t event_mask)
@@ -102,6 +109,11 @@ float readvsys()
 
 int main(void)
 {
+    /* Enable watchdog-timer with a timeout of 121 seconds. */
+    // Unfortunately, the WDT has a timeout of at most 8.3 seconds.
+    // Even WiFi connect can take longer than that.
+    // This is completely useless and unusable.
+    //watchdog_enable(121000, true);
     sleep_ms(1500);
 #if EPAPERON
     if (DEV_Module_Init() != 0) {
@@ -236,7 +248,19 @@ int main(void)
       /* Now query and print sensors */
       int i = 0;
       while (stq[i].name != NULL) {
-        sensdata sd = fetchtemphum(stq[i].host, stq[i].port);
+        sensdata sd;
+        if (stq[i].host != NULL) {
+          sd = fetchtemphum(stq[i].host, stq[i].port);
+        } else {
+          sd.isvalid = 0;
+          int hr = fetchvaluefromwpd(stq[i].sensidt, &(sd.temp));
+          if (hr == 0) {
+            hr = fetchvaluefromwpd(stq[i].sensidh, &(sd.hum));
+            if (hr == 0) {
+              sd.isvalid = 1;
+            }
+          }
+        }
         Paint_DrawString_EN(10, 35 + i*22, stq[i].name, &FontTerminus19, WHITE, BLACK);
         if (sd.isvalid) {
           sprintf(spfbuf, "%5.2f" "\x7f" "C", sd.temp);
