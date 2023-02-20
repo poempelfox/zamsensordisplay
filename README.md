@@ -15,3 +15,5 @@ Status:
 * Power saving surely could be improved.
 * does not turn off automatically. Press both buttons at the same time to shut it down (clears the display to prevent it from burning in, which the manufacturer says can happen with its multi-color epaper displays).
 
+<img src="./epd1.jpg" alt="Picture of first beta of the sensor display in action" width="1200">
+
