@@ -46,8 +46,8 @@ struct remsens stq[] = {
   { .name = "Bad 2. OG", .host = "tempzamsh.im.zam.haus", .port = 7338 },
   { .name = "Whng.alt 2. OG", .host = "tempzamsh.im.zam.haus", .port = 7339 },
   { .name = "Partykeller", .host = NULL, .sensidt = 63, .sensidh = 64 },
-  { .name = "Aquarium-NH", .host = "tempzamnh.im.zam.haus", .port = 7342 },
-  { .name = "Serverraum", .host = "tempzamnh.im.zam.haus", .port = 7344 },
+  { .name = "Aquarium-NH", .host = "tempzamnh.im.zam.haus", .port = 7344 },
+  { .name = "Serverraum", .host = "tempzamnh.im.zam.haus", .port = 7342 },
   { .name = NULL, .host = NULL }
 };
 
